@@ -21,11 +21,9 @@ CREATE TABLE tree (
 	x INTEGER NOT NULL CHECK (x >= 1),
 	y INTEGER NOT NULL CHECK (y >= 1),
 	height INTEGER NOT NULL CHECK (height BETWEEN 1 AND 30),
-	created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-	-- One tree per plot, enforced here so concurrent inserts cannot race
-	-- (violations surface as SQLSTATE 23505 and map to HTTP 400).
-	-- The leading estate_id also serves the FK and every per-estate query,
-	-- and INCLUDE (height) lets the stats and drone-plan reads run as
-	-- index-only scans once autovacuum has marked the pages all-visible.
+	created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+	-- One tree per plot, race-free (duplicate -> 23505 -> HTTP 400).
+	-- The index also covers the FK and per-estate reads; INCLUDE (height)
+	-- makes stats and drone-plan eligible for index-only scans.
 	CONSTRAINT tree_estate_plot_key UNIQUE (estate_id, x, y) INCLUDE (height)
 );
