@@ -24,13 +24,13 @@ func TestPathIndex(t *testing.T) {
 		{name: "third row eastbound again", length: 3, x: 1, y: 3, want: 6},
 		{name: "largest estate last plot", length: 50000, x: 1, y: 50000, want: 2_499_999_999},
 	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			require.Equal(t, tt.want, pathIndex(tt.length, tt.x, tt.y))
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			require.Equal(t, tc.want, pathIndex(tc.length, tc.x, tc.y))
 
-			x, y := plotAt(tt.length, tt.want)
-			require.Equal(t, tt.x, x, "x")
-			require.Equal(t, tt.y, y, "y")
+			x, y := plotAt(tc.length, tc.want)
+			require.Equal(t, tc.x, x, "x")
+			require.Equal(t, tc.y, y, "y")
 		})
 	}
 }
