@@ -1,6 +1,6 @@
 
 
-.PHONY: clean all init generate generate_mocks
+.PHONY: clean all init generate generate_mocks test test_unit test_api
 
 all: build/main
 
@@ -15,9 +15,16 @@ init: clean generate
 	go mod tidy
 	go mod vendor
 
+# Coverage total excludes generated code (oapi-codegen output, mocks): it is not
+# hand-written, so it says nothing about test quality. See spec/design.md §7.1.
 test:
 	go clean -testcache
-	go test -short -coverprofile coverage.out -short -v ./...
+	go test -short -coverprofile coverage.out -v ./...
+	@grep -v -e '/generated/' -e '\.mock\.gen\.go:' coverage.out > coverage.unit.out
+	@echo "Unit coverage (hand-written code):"
+	@go tool cover -func coverage.unit.out | tail -1
+
+test_unit: test
 
 test_api:
 	go clean -testcache

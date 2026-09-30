@@ -8,6 +8,7 @@ services:
     depends_on:
       db:
         condition: service_healthy
+    restart: on-failure
   db:
     platform: linux/x86_64
     image: postgres:14.1-alpine
@@ -27,10 +28,14 @@ services:
       # `docker-compose down --volumes` first to remove the volume.
       - ./database.sql:/docker-entrypoint-initdb.d/database.sql
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres"]
-      interval: 10s
+      # -h localhost forces a TCP check. During init scripts the entrypoint runs a
+      # temporary server on the Unix socket only, so a socket check would report
+      # "ready" before database.sql has finished loading.
+      test: ["CMD-SHELL", "pg_isready -h localhost -U postgres -d database"]
+      interval: 5s
       timeout: 5s
-      retries: 3
+      retries: 10
+      start_period: 10s
 volumes:
   db:
     driver: local

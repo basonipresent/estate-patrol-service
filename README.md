@@ -8,15 +8,15 @@ To run this project you need to have the following installed:
 2. [GNU Make](https://www.gnu.org/software/make/)
 3. [oapi-codegen](https://github.com/deepmap/oapi-codegen)
 
-    Install the latest version with:
+    Install the pinned version:
     ```
-    go install github.com/deepmap/oapi-codegen/cmd/oapi-codegen@latest
+    go install github.com/deepmap/oapi-codegen/cmd/oapi-codegen@v1.16.3
     ```
 4. [mock](https://github.com/uber-go/mock)
 
-    Install the latest version with:
+    Install the pinned version (newer releases require Go > 1.21):
     ```
-    go install go.uber.org/mock/mockgen@latest
+    go install go.uber.org/mock/mockgen@v0.4.0
     ```
 
 5. [Docker](https://docs.docker.com/get-docker/) version 20
