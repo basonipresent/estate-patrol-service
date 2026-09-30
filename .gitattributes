@@ -1,0 +1,3 @@
+# Force LF everywhere: run.sh and the Makefile must work on the grader's Linux/macOS
+# even when checked out on Windows with core.autocrlf=true.
+* text=auto eol=lf
