@@ -51,44 +51,6 @@ func TestApi(t *testing.T) {
 func getTestCases() []TestCase {
 	return []TestCase{
 		{
-			Name: "Test Hello",
-			Steps: []TestCaseStep{
-				{
-					Request: func(t *testing.T, ctx context.Context, tc *TestCase) (*http.Request, error) {
-						return http.NewRequest("GET", ApiUrl+"/hello", nil)
-					},
-					Expect: func(t *testing.T, ctx context.Context, tc *TestCase, resp *http.Response, data map[string]any) {
-						require.Equal(t, http.StatusBadRequest, resp.StatusCode)
-					},
-				},
-			},
-		},
-		{
-			Name: "Test Hello with name",
-			Steps: []TestCaseStep{
-				{
-					Request: func(t *testing.T, ctx context.Context, tc *TestCase) (*http.Request, error) {
-						return http.NewRequest("GET", ApiUrl+"/hello?id=123", nil)
-					},
-					Expect: func(t *testing.T, ctx context.Context, tc *TestCase, resp *http.Response, data map[string]any) {
-						require.Equal(t, http.StatusOK, resp.StatusCode)
-						require.Equal(t, "Hello User 123", data["message"])
-					},
-				},
-				{
-					Request: func(t *testing.T, ctx context.Context, tc *TestCase) (*http.Request, error) {
-						return http.NewRequest("GET", ApiUrl+"/hello?id=456", nil)
-					},
-					Expect: func(t *testing.T, ctx context.Context, tc *TestCase, resp *http.Response, data map[string]any) {
-						require.Equal(t, http.StatusOK, resp.StatusCode)
-						step1 := tc.Steps[0]
-						require.Equal(t, "Hello User 123", step1.Result["message"])
-					},
-				},
-			},
-		},
-		//----- Test for API
-		{
 			Name: "Test Error 1",
 			Steps: []TestCaseStep{
 				{

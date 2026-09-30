@@ -1,6 +1,6 @@
-# This is the OpenAPI specification for your service. It is used to generate the client code.
-# To generate the server code, use the Gradle task `openApiGenerate`. The 
-# generated code will be placed in `build/generate-resources/main`.
+# OpenAPI contract for the Estate Patrol Service. It is the source of truth for
+# request/response shapes and schema-level validation. Server types and routing
+# are generated with oapi-codegen (`make generate` -> generated/api.gen.go).
 #
 # We will evaluate you based on how well you design your API.
 # 1. How well it follows REST principles.
@@ -12,47 +12,259 @@ openapi: "3.0.0"
 info:
   version: 1.0.0
   title: Estate Patrol Service
+  description: |
+    Record plantation estates and the trees planted in them, and plan drone
+    patrol routes over them.
+
+    An estate is a grid of 10 m × 10 m plots. Plot (1,1) is the south-west
+    corner; x grows eastward up to `length`, y grows northward up to `width`.
   license:
     name: MIT
 servers:
-  - url: http://localhost
+  - url: http://localhost:8080
 paths:
-  /hello:
-    get:
-      summary: This is just a test endpoint to get you started.
-      parameters:
-        - name: id
-          in: query
-          required: true
-          schema:
-            type: integer
+  /estate:
+    post:
+      operationId: createEstate
+      summary: Register a plantation estate
+      description: |
+        Creates a rectangular estate of `length` × `width` plots, each 10 m × 10 m.
+        Plot (1,1) is the south-west corner; x grows eastward, y grows northward.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateEstateRequest"
       responses:
-        '200':
-          description: Test return
-          content:
-            application/json:    
-              schema:
-                $ref: "#/components/schemas/HelloResponse"
-        '404':
-          description: Not found
+        "201":
+          description: Estate created.
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/ErrorResponse"
+                $ref: "#/components/schemas/IdResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+  /estate/{id}/tree:
+    parameters:
+      - $ref: "#/components/parameters/EstateId"
+    post:
+      operationId: createTree
+      summary: Register a tree in an estate
+      description: |
+        Plants a tree of the given height on plot (x, y) of the estate.
+        A plot holds at most one tree.
+
+        Returns 400 if the plot lies outside the estate or already has a tree,
+        and 404 if the estate does not exist.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateTreeRequest"
+      responses:
+        "201":
+          description: Tree created.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IdResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /estate/{id}/stats:
+    parameters:
+      - $ref: "#/components/parameters/EstateId"
+    get:
+      operationId: getEstateStats
+      summary: Get tree height statistics for an estate
+      description: |
+        Returns the number of trees in the estate and the minimum, maximum and
+        median of their heights. An estate with no trees returns all zeros.
+      responses:
+        "200":
+          description: Tree height statistics.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EstateStatsResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /estate/{id}/drone-plan:
+    parameters:
+      - $ref: "#/components/parameters/EstateId"
+    get:
+      operationId: getDronePlan
+      summary: Get the drone patrol distance for an estate
+      description: |
+        The drone takes off from plot (1,1), visits every plot in a zig-zag
+        (eastward along odd rows, westward along even rows, moving north between
+        rows) and lands on the last plot. It monitors each plot 1 m above the
+        ground or the tree on it, climbing before moving onto a taller plot and
+        descending after moving onto a lower one.
+
+        Returns the total distance flown. With `max_distance`, also returns
+        `rest`, the plot where the drone lands when its main battery runs out.
+      parameters:
+        - name: max_distance
+          in: query
+          required: false
+          description: |
+            Main-battery range in metres. When set, the response includes
+            `rest`. The landing descent uses the backup battery and does not
+            count against this value.
+          schema:
+            type: integer
+            format: int64
+            minimum: 1
+            example: 30
+      responses:
+        "200":
+          description: Patrol plan.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DronePlanResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
 components:
+  parameters:
+    EstateId:
+      name: id
+      in: path
+      required: true
+      description: Estate ID returned by `POST /estate`.
+      schema:
+        type: string
+        format: uuid
+      example: 5f0c6a2e-8d4b-4c7e-9a1f-2b3c4d5e6f70
   schemas:
-    HelloResponse:
+    CreateEstateRequest:
       type: object
-      required:
-        - message
+      required: [length, width]
       properties:
-        message:
+        length:
+          type: integer
+          minimum: 1
+          maximum: 50000
+          description: Number of plots from west to east.
+          example: 5
+        width:
+          type: integer
+          minimum: 1
+          maximum: 50000
+          description: Number of plots from south to north.
+          example: 1
+    CreateTreeRequest:
+      type: object
+      required: [x, y, height]
+      properties:
+        x:
+          type: integer
+          minimum: 1
+          maximum: 50000
+          description: Plot number from west to east; must not exceed the estate's `length`.
+          example: 3
+        y:
+          type: integer
+          minimum: 1
+          maximum: 50000
+          description: Plot number from south to north; must not exceed the estate's `width`.
+          example: 1
+        height:
+          type: integer
+          minimum: 1
+          maximum: 30
+          description: Height of the tree in metres.
+          example: 10
+    IdResponse:
+      type: object
+      required: [id]
+      properties:
+        id:
           type: string
-          example: Hello, World!
+          format: uuid
+          example: 5f0c6a2e-8d4b-4c7e-9a1f-2b3c4d5e6f70
+    EstateStatsResponse:
+      type: object
+      required: [count, min, max, median]
+      properties:
+        count:
+          type: integer
+          description: Number of trees in the estate.
+          example: 3
+        min:
+          type: integer
+          description: Height of the shortest tree in metres (0 if there are no trees).
+          example: 3
+        max:
+          type: integer
+          description: Height of the tallest tree in metres (0 if there are no trees).
+          example: 5
+        median:
+          type: number
+          format: double
+          description: |
+            Median tree height in metres (0 if there are no trees). With an even
+            number of trees it is the mean of the two middle heights, e.g. 3.5.
+          example: 4
+    DronePlanResponse:
+      type: object
+      description: |
+        `rest` is present only when `max_distance` is given. It is the plot where
+        the drone lands once `max_distance` metres are used up; if
+        `max_distance` covers the whole plan, it is the last plot of the patrol.
+      required: [distance]
+      properties:
+        distance:
+          type: integer
+          format: int64
+          description: |
+            Total distance in metres to patrol every plot: horizontal travel plus
+            every climb and descent, including take-off and landing. Always the
+            full plan, even when `max_distance` is given.
+          example: 54
+        rest:
+          $ref: "#/components/schemas/Plot"
+    Plot:
+      type: object
+      description: A plot in the estate grid.
+      required: [x, y]
+      properties:
+        x:
+          type: integer
+          description: Plot number from west to east.
+          example: 3
+        y:
+          type: integer
+          description: Plot number from south to north.
+          example: 1
     ErrorResponse:
       type: object
-      required:
-        - message
+      required: [message]
       properties:
         message:
           type: string
+  responses:
+    BadRequest:
+      description: The request is malformed or breaks a validation rule.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+          example:
+            message: "length must be between 1 and 50000"
+    NotFound:
+      description: No estate exists with the given ID.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+          example:
+            message: "estate not found"
