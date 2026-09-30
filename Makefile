@@ -16,7 +16,7 @@ init: clean generate
 	go mod vendor
 
 # Coverage total excludes generated code (oapi-codegen output, mocks): it is not
-# hand-written, so it says nothing about test quality. See spec/design.md §7.1.
+# hand-written, so it says nothing about test quality.
 test:
 	go clean -testcache
 	go test -short -coverprofile coverage.out -v ./...
