@@ -2,6 +2,7 @@ package handler
 
 import (
 	"errors"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -24,6 +25,13 @@ var (
 	estate5x1 = repository.GetEstateOutput{Id: estateID, Length: 5, Width: 1}
 )
 
+// quietEcho discards log output so the expected 5xx logs don't clutter test runs.
+func quietEcho() *echo.Echo {
+	e := echo.New()
+	e.Logger.SetOutput(io.Discard)
+	return e
+}
+
 func newServer(t *testing.T) (*Server, *repository.MockRepositoryInterface) {
 	repo := repository.NewMockRepositoryInterface(gomock.NewController(t))
 	return NewServer(NewServerOptions{Repository: repo}), repo
@@ -35,7 +43,7 @@ func call(t *testing.T, method, body string, h func(echo.Context) error) *httpte
 	req := httptest.NewRequest(method, "/", strings.NewReader(body))
 	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
 	rec := httptest.NewRecorder()
-	c := echo.New().NewContext(req, rec)
+	c := quietEcho().NewContext(req, rec)
 	if err := h(c); err != nil {
 		ErrorHandler(err, c)
 	}

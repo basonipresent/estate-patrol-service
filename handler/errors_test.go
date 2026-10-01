@@ -64,7 +64,7 @@ func TestErrorHandler(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			rec := httptest.NewRecorder()
-			c := echo.New().NewContext(httptest.NewRequest(http.MethodGet, "/", nil), rec)
+			c := quietEcho().NewContext(httptest.NewRequest(http.MethodGet, "/", nil), rec)
 
 			ErrorHandler(tc.err, c)
 
@@ -91,7 +91,7 @@ func TestErrorHandlerLogs5xxWithRequestID(t *testing.T) {
 
 func TestErrorHandlerHeadHasNoBody(t *testing.T) {
 	rec := httptest.NewRecorder()
-	c := echo.New().NewContext(httptest.NewRequest(http.MethodHead, "/", nil), rec)
+	c := quietEcho().NewContext(httptest.NewRequest(http.MethodHead, "/", nil), rec)
 
 	ErrorHandler(echo.ErrNotFound, c)
 
@@ -101,7 +101,7 @@ func TestErrorHandlerHeadHasNoBody(t *testing.T) {
 
 func TestErrorHandlerSkipsCommittedResponse(t *testing.T) {
 	rec := httptest.NewRecorder()
-	c := echo.New().NewContext(httptest.NewRequest(http.MethodGet, "/", nil), rec)
+	c := quietEcho().NewContext(httptest.NewRequest(http.MethodGet, "/", nil), rec)
 	require.NoError(t, c.String(http.StatusOK, "partial"))
 
 	ErrorHandler(errors.New("late failure"), c)

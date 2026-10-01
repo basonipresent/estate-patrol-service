@@ -37,7 +37,7 @@ func TestBindJSON(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			req := httptest.NewRequest(http.MethodPost, "/", tc.body)
 			req.Header.Set(echo.HeaderContentType, tc.contentType)
-			c := echo.New().NewContext(req, httptest.NewRecorder())
+			c := quietEcho().NewContext(req, httptest.NewRecorder())
 
 			var got body
 			err := bindJSON(c, &got, "bad body")
@@ -61,7 +61,7 @@ func (r errReader) Read([]byte) (int, error) { return 0, r.err }
 func TestRequestTimeout(t *testing.T) {
 	run := func(h echo.HandlerFunc) *httptest.ResponseRecorder {
 		rec := httptest.NewRecorder()
-		c := echo.New().NewContext(httptest.NewRequest(http.MethodGet, "/", nil), rec)
+		c := quietEcho().NewContext(httptest.NewRequest(http.MethodGet, "/", nil), rec)
 		if err := RequestTimeout(20 * time.Millisecond)(h)(c); err != nil {
 			ErrorHandler(err, c)
 		}
