@@ -22,10 +22,9 @@ const (
 // (POST /estate)
 func (s *Server) CreateEstate(ctx echo.Context) error {
 	var req generated.CreateEstateRequest
-	if err := ctx.Bind(&req); err != nil {
-		return badRequest("request body must be JSON with integer length and width")
+	if err := bindJSON(ctx, &req, "request body must be JSON with integer length and width"); err != nil {
+		return err
 	}
-	// An empty body binds to zeros, so this also rejects it.
 	if !inRange(req.Length, 1, maxEstateSide) || !inRange(req.Width, 1, maxEstateSide) {
 		return badRequest(fmt.Sprintf("length and width must be between 1 and %d", maxEstateSide))
 	}
@@ -43,8 +42,8 @@ func (s *Server) CreateEstate(ctx echo.Context) error {
 // (POST /estate/{id}/tree)
 func (s *Server) CreateTree(ctx echo.Context, id generated.EstateId) error {
 	var req generated.CreateTreeRequest
-	if err := ctx.Bind(&req); err != nil {
-		return badRequest("request body must be JSON with integer x, y and height")
+	if err := bindJSON(ctx, &req, "request body must be JSON with integer x, y and height"); err != nil {
+		return err
 	}
 	if !inRange(req.Height, minTreeHeight, maxTreeHeight) {
 		return badRequest(fmt.Sprintf("height must be between %d and %d", minTreeHeight, maxTreeHeight))
@@ -105,10 +104,16 @@ func (s *Server) GetDronePlan(ctx echo.Context, id generated.EstateId, params ge
 		return err
 	}
 
-	// TODO(phase 8): with max_distance, cap distance and return rest.
-	return ctx.JSON(http.StatusOK, generated.DronePlanResponse{
+	resp := generated.DronePlanResponse{
 		Distance: droneplan.Distance(estate.Length, estate.Width, out.Trees),
-	})
+	}
+	if params.MaxDistance != nil {
+		// Distance flown on the main battery; the forced-landing descent uses the backup.
+		resp.Distance = min(resp.Distance, *params.MaxDistance)
+		x, y := droneplan.Rest(estate.Length, estate.Width, out.Trees, *params.MaxDistance)
+		resp.Rest = &generated.Plot{X: x, Y: y}
+	}
+	return ctx.JSON(http.StatusOK, resp)
 }
 
 func mapRepoError(err error) error {

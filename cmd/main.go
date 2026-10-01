@@ -23,6 +23,8 @@ import (
 const (
 	dbPingAttempts  = 10
 	shutdownTimeout = 10 * time.Second
+	// Below the server WriteTimeout so a slow request still gets a JSON 503.
+	requestTimeout = 25 * time.Second
 )
 
 func main() {
@@ -55,6 +57,7 @@ func run() error {
 		middleware.RequestID(),
 		middleware.Logger(),
 		middleware.BodyLimit("16K"),
+		handler.RequestTimeout(requestTimeout),
 	)
 	server := handler.NewServer(handler.NewServerOptions{
 		Repository: repository.NewRepository(repository.NewRepositoryOptions{Db: db}),

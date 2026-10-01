@@ -67,6 +67,8 @@ func TestCreateEstate(t *testing.T) {
 		{name: "negative", body: `{"length":-1,"width":-5}`},
 		{name: "too wide", body: `{"length":1,"width":50001}`},
 		{name: "missing width", body: `{"length":5}`},
+		{name: "trailing data", body: `{"length":5,"width":1}xyz`},
+		{name: "two objects", body: `{"length":5,"width":1}{"length":9,"width":9}`},
 	}
 	for _, tc := range badBodies {
 		t.Run("400 "+tc.name, func(t *testing.T) {
@@ -251,6 +253,25 @@ func TestGetDronePlan(t *testing.T) {
 		rec := call(t, http.MethodGet, ``, getPlan(s, nil))
 		requireResponse(t, rec, http.StatusOK, `{"distance":54}`)
 	})
+
+	bonus := []struct {
+		name        string
+		maxDistance int64
+		wantBody    string
+	}{
+		{name: "battery runs out mid-move", maxDistance: 20, wantBody: `{"distance":20,"rest":{"x":2,"y":1}}`},
+		{name: "battery covers the plan", maxDistance: 100, wantBody: `{"distance":54,"rest":{"x":5,"y":1}}`},
+	}
+	for _, tc := range bonus {
+		t.Run("200 with rest: "+tc.name, func(t *testing.T) {
+			s, repo := newServer(t)
+			repo.EXPECT().GetEstate(gomock.Any(), gomock.Any()).Return(estate5x1, nil)
+			repo.EXPECT().ListTrees(gomock.Any(), gomock.Any()).Return(specTrees, nil)
+
+			rec := call(t, http.MethodGet, ``, getPlan(s, &tc.maxDistance))
+			requireResponse(t, rec, http.StatusOK, tc.wantBody)
+		})
+	}
 
 	for _, v := range []int64{0, -1} {
 		v := v

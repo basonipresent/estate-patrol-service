@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 	"testing"
 
 	"github.com/google/uuid"
@@ -15,6 +16,9 @@ import (
 )
 
 const ApiUrl = "http://localhost:8080"
+
+// unknownEstateID is a well-formed UUID that no estate will ever have.
+const unknownEstateID = "00000000-0000-0000-0000-000000000000"
 
 func TestApi(t *testing.T) {
 	if testing.Short() {
@@ -30,9 +34,9 @@ func TestApi(t *testing.T) {
 			for idx := range tc.Steps {
 				step := &tc.Steps[idx]
 				request, err := step.Request(t, ctx, &tc)
+				require.NoError(t, err)
 				request.Header.Set("Content-Type", "application/json")
 				request.Header.Set("Accept", "application/json")
-				require.NoError(t, err)
 
 				// Send request
 				response, err := client.Do(request)
@@ -83,6 +87,53 @@ func getTestCases() []TestCase {
 				},
 			},
 		},
+		{
+			Name: "Error: estate dimensions out of range",
+			Steps: []TestCaseStep{
+				{Request: SendRequestNewEstate(0, 1), Expect: ExpectBadRequest()},
+				{Request: SendRequestNewEstate(50001, 1), Expect: ExpectBadRequest()},
+				{Request: SendRequest("POST", "/estate", `{"length":10.5,"width":1}`), Expect: ExpectBadRequest()},
+				{Request: SendRequest("POST", "/estate", `{"length":"10","width":1}`), Expect: ExpectBadRequest()},
+				{Request: SendRequest("POST", "/estate", `{"length":`), Expect: ExpectBadRequest()},
+			},
+		},
+		{
+			Name: "Error: invalid trees",
+			Steps: []TestCaseStep{
+				{Request: SendRequestNewEstate(5, 1), Expect: ExpectNewEstateOk()},
+				{Request: SendRequestNewTree(10, 6, 1), Expect: ExpectBadRequest()}, // x past length
+				{Request: SendRequestNewTree(10, 1, 2), Expect: ExpectBadRequest()}, // y past width
+				{Request: SendRequestNewTree(0, 1, 1), Expect: ExpectBadRequest()},
+				{Request: SendRequestNewTree(31, 1, 1), Expect: ExpectBadRequest()},
+				{Request: SendRequestNewTree(10, 2, 1), Expect: ExpectNewTreeOk()},
+				{Request: SendRequestNewTree(20, 2, 1), Expect: ExpectBadRequest()}, // plot occupied
+			},
+		},
+		{
+			Name: "Error: unknown estate",
+			Steps: []TestCaseStep{
+				{Request: SendRequest("POST", "/estate/"+unknownEstateID+"/tree", `{"x":1,"y":1,"height":5}`), Expect: ExpectNotFound()},
+				{Request: SendRequest("GET", "/estate/"+unknownEstateID+"/stats", ""), Expect: ExpectNotFound()},
+				{Request: SendRequest("GET", "/estate/"+unknownEstateID+"/drone-plan", ""), Expect: ExpectNotFound()},
+			},
+		},
+		{
+			Name: "Error: malformed estate id",
+			Steps: []TestCaseStep{
+				{Request: SendRequest("POST", "/estate/not-a-uuid/tree", `{"x":1,"y":1,"height":5}`), Expect: ExpectBadRequest()},
+				{Request: SendRequest("GET", "/estate/not-a-uuid/stats", ""), Expect: ExpectBadRequest()},
+				{Request: SendRequest("GET", "/estate/not-a-uuid/drone-plan", ""), Expect: ExpectBadRequest()},
+			},
+		},
+		{
+			Name: "Error: invalid max_distance",
+			Steps: []TestCaseStep{
+				{Request: SendRequestNewEstate(5, 1), Expect: ExpectNewEstateOk()},
+				{Request: SendRequest("GET", "/estate/{id}/drone-plan?max_distance=0", ""), Expect: ExpectBadRequest()},
+				{Request: SendRequest("GET", "/estate/{id}/drone-plan?max_distance=-5", ""), Expect: ExpectBadRequest()},
+				{Request: SendRequest("GET", "/estate/{id}/drone-plan?max_distance=abc", ""), Expect: ExpectBadRequest()},
+			},
+		},
 		CreateNormalTestCase("Normal 1", []any{
 			[]any{CreateEstate, 10, 20},
 			[]any{CreateTree, 10, 5, 5},
@@ -95,6 +146,48 @@ func getTestCases() []TestCase {
 			[]any{CreateTree, 10, 4, 1},
 			[]any{GetStats, 3, 10, 20, 10},
 			[]any{GetDronePlan, 0, 82},
+		}),
+		CreateNormalTestCase("Spec example", []any{
+			[]any{CreateEstate, 5, 1},
+			[]any{CreateTree, 5, 2, 1},
+			[]any{CreateTree, 3, 3, 1},
+			[]any{CreateTree, 4, 4, 1},
+			[]any{GetStats, 3, 3, 5, 4},
+			[]any{GetDronePlan, 0, 54},
+		}),
+		CreateNormalTestCase("Empty estate", []any{
+			[]any{CreateEstate, 4, 3},
+			[]any{GetStats, 0, 0, 0, 0},
+			[]any{GetDronePlan, 0, 10*(4*3-1) + 2},
+		}),
+		CreateNormalTestCase("Even median and row turn", []any{
+			[]any{CreateEstate, 3, 2},
+			[]any{CreateTree, 3, 3, 1},
+			[]any{CreateTree, 4, 3, 2}, // neighbour of (3,1) across the row turn
+			[]any{GetStats, 2, 3, 4, 3.5},
+			[]any{GetDronePlan, 0, 10*5 + 2 + 3 + 1 + 4},
+		}),
+		// Bonus: {GetDronePlanRest, max_distance, distance flown, rest x, rest y}.
+		CreateNormalTestCase("Bonus: forced landing on the spec example", []any{
+			[]any{CreateEstate, 5, 1},
+			[]any{CreateTree, 5, 2, 1},
+			[]any{CreateTree, 3, 3, 1},
+			[]any{CreateTree, 4, 4, 1},
+			[]any{GetDronePlanRest, 3, 3, 1, 1},     // mid climb
+			[]any{GetDronePlanRest, 10, 10, 1, 1},   // mid move: plot it left
+			[]any{GetDronePlanRest, 16, 16, 2, 1},   // exactly on arrival
+			[]any{GetDronePlanRest, 27, 27, 3, 1},   // mid descent: plot it reached
+			[]any{GetDronePlanRest, 1000, 54, 5, 1}, // battery outlasts the plan
+		}),
+		CreateNormalTestCase("Bonus: largest estate", []any{
+			[]any{CreateEstate, 50000, 50000},
+			[]any{GetDronePlanRest, 1 + 10*50000, 1 + 10*50000, 50000, 2},
+		}),
+		CreateNormalTestCase("Largest estate", []any{
+			[]any{CreateEstate, 50000, 50000},
+			[]any{CreateTree, 30, 1, 1},
+			[]any{CreateTree, 1, 1, 50000},
+			[]any{GetDronePlan, 0, 10*(50000*50000-1) + 2 + 30 + 30 + 1 + 1},
 		}),
 	}
 }
@@ -137,6 +230,7 @@ const (
 	CreateTree
 	GetStats
 	GetDronePlan
+	GetDronePlanRest
 )
 
 func CreateNormalTestCase(name string, a []any) TestCase {
@@ -158,17 +252,42 @@ func CreateNormalTestCase(name string, a []any) TestCase {
 		case GetStats:
 			tc.Steps = append(tc.Steps, TestCaseStep{
 				Request: SendRequestGetStats(),
-				Expect:  ExpectGetStatsOk(step.([]any)[1].(int), step.([]any)[2].(int), step.([]any)[3].(int), step.([]any)[4].(int)),
+				Expect:  ExpectGetStatsOk(step.([]any)[1].(int), step.([]any)[2].(int), step.([]any)[3].(int), toFloat(step.([]any)[4])),
 			})
 		case GetDronePlan:
 			tc.Steps = append(tc.Steps, TestCaseStep{
 				Request: SendRequestGetDronePlan(step.([]any)[1].(int)),
 				Expect:  ExpectGetDronePlanOk(step.([]any)[2].(int)),
 			})
+		case GetDronePlanRest:
+			tc.Steps = append(tc.Steps, TestCaseStep{
+				Request: SendRequestGetDronePlan(step.([]any)[1].(int)),
+				Expect:  ExpectGetDronePlanRest(step.([]any)[2].(int), step.([]any)[3].(int), step.([]any)[4].(int)),
+			})
 		}
 
 	}
 	return tc
+}
+
+// toFloat lets a median be written as 4 or 3.5 in the test tables.
+func toFloat(v any) float64 {
+	if i, ok := v.(int); ok {
+		return float64(i)
+	}
+	return v.(float64)
+}
+
+// SendRequest sends a raw body to path. "{id}" in path is replaced by the
+// estate created in the test case's first step.
+func SendRequest(method, path, body string) RequestFunc {
+	return func(t *testing.T, ctx context.Context, tc *TestCase) (*http.Request, error) {
+		p := path
+		if strings.Contains(p, "{id}") {
+			p = strings.ReplaceAll(p, "{id}", tc.Steps[0].Result["id"].(string))
+		}
+		return http.NewRequest(method, ApiUrl+p, strings.NewReader(body))
+	}
 }
 
 func SendRequestNewEstate(length, width int) RequestFunc {
@@ -216,7 +335,7 @@ func SendRequestGetStats() RequestFunc {
 	}
 }
 
-func ExpectGetStatsOk(count, min, max, median int) ExpectFunc {
+func ExpectGetStatsOk(count, min, max int, median float64) ExpectFunc {
 	return func(t *testing.T, ctx context.Context, tc *TestCase, resp *http.Response, data map[string]any) {
 		RequireStats(t, resp, data, count, min, max, median)
 	}
@@ -230,7 +349,7 @@ func SendRequestGetDronePlan(distance int) RequestFunc {
 		if distance == 0 {
 			url = fmt.Sprintf("%s/estate/%s/drone-plan", ApiUrl, id)
 		} else {
-			url = fmt.Sprintf("%s/estate/%s/drone-plan?distance=%d", ApiUrl, id, distance)
+			url = fmt.Sprintf("%s/estate/%s/drone-plan?max_distance=%d", ApiUrl, id, distance)
 		}
 		return http.NewRequest("GET", url, nil)
 	}
@@ -239,20 +358,30 @@ func SendRequestGetDronePlan(distance int) RequestFunc {
 func ExpectGetDronePlanOk(distance int) ExpectFunc {
 	return func(t *testing.T, ctx context.Context, tc *TestCase, resp *http.Response, data map[string]any) {
 		RequireDistance(t, resp, data, distance)
+		require.NotContains(t, data, "rest")
+	}
+}
+
+func ExpectGetDronePlanRest(distance, x, y int) ExpectFunc {
+	return func(t *testing.T, ctx context.Context, tc *TestCase, resp *http.Response, data map[string]any) {
+		RequireDistance(t, resp, data, distance)
+		rest := data["rest"].(map[string]any)
+		require.Equal(t, x, int(rest["x"].(float64)))
+		require.Equal(t, y, int(rest["y"].(float64)))
 	}
 }
 
 func RequireReturnIsUUID(t *testing.T, resp *http.Response, data map[string]any) {
-	require.Equal(t, http.StatusOK, resp.StatusCode)
+	require.Equal(t, http.StatusCreated, resp.StatusCode)
 	RequireIsUUID(t, data["id"].(string))
 }
 
-func RequireStats(t *testing.T, resp *http.Response, data map[string]any, count, min, max, median int) {
+func RequireStats(t *testing.T, resp *http.Response, data map[string]any, count, min, max int, median float64) {
 	require.Equal(t, http.StatusOK, resp.StatusCode)
 	require.Equal(t, count, int(data["count"].(float64)))
 	require.Equal(t, min, int(data["min"].(float64)))
 	require.Equal(t, max, int(data["max"].(float64)))
-	require.Equal(t, median, int(data["median"].(float64)))
+	require.Equal(t, median, data["median"].(float64))
 }
 
 func RequireDistance(t *testing.T, resp *http.Response, data map[string]any, distance int) {
@@ -261,7 +390,17 @@ func RequireDistance(t *testing.T, resp *http.Response, data map[string]any, dis
 }
 
 func ExpectBadRequest() ExpectFunc {
+	return ExpectError(http.StatusBadRequest)
+}
+
+func ExpectNotFound() ExpectFunc {
+	return ExpectError(http.StatusNotFound)
+}
+
+// ExpectError checks the status and that the body is the {"message": ...} error shape.
+func ExpectError(status int) ExpectFunc {
 	return func(t *testing.T, ctx context.Context, tc *TestCase, resp *http.Response, data map[string]any) {
-		require.Equal(t, http.StatusBadRequest, resp.StatusCode)
+		require.Equal(t, status, resp.StatusCode)
+		require.NotEmpty(t, data["message"])
 	}
 }
