@@ -107,16 +107,17 @@ paths:
         ground or the tree on it, climbing before moving onto a taller plot and
         descending after moving onto a lower one.
 
-        Returns the total distance flown. With `max_distance`, also returns
-        `rest`, the plot where the drone lands when its main battery runs out.
+        Returns the total distance of the patrol. With `max_distance`, returns
+        the distance flown before the main battery runs out, and `rest`, the
+        plot where the drone lands.
       parameters:
         - name: max_distance
           in: query
           required: false
           description: |
-            Main-battery range in metres. When set, the response includes
-            `rest`. The landing descent uses the backup battery and does not
-            count against this value.
+            Main-battery range in metres. When set, `distance` is capped at
+            this value and the response includes `rest`. The forced-landing
+            descent uses the backup battery and is not counted.
           schema:
             type: integer
             format: int64
@@ -226,9 +227,10 @@ components:
           type: integer
           format: int64
           description: |
-            Total distance in metres to patrol every plot: horizontal travel plus
-            every climb and descent, including take-off and landing. Always the
-            full plan, even when `max_distance` is given.
+            Metres flown: horizontal travel plus every climb and descent,
+            including take-off and landing. Without `max_distance` this is the
+            full patrol; with it, the distance flown before the forced landing,
+            i.e. min(full patrol, max_distance).
           example: 54
         rest:
           $ref: "#/components/schemas/Plot"
