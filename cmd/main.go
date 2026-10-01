@@ -13,6 +13,7 @@ import (
 
 func main() {
 	e := echo.New()
+	e.HTTPErrorHandler = handler.ErrorHandler
 
 	var server generated.ServerInterface = newServer()
 
