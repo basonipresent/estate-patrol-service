@@ -1,26 +1,20 @@
 // This file contains the repository implementation layer.
 package repository
 
-import (
-	"database/sql"
-
-	_ "github.com/lib/pq"
-)
+import "database/sql"
 
 type Repository struct {
 	Db *sql.DB
 }
 
+// NewRepositoryOptions takes an open pool; main owns connecting, pool limits
+// and closing it.
 type NewRepositoryOptions struct {
-	Dsn string
+	Db *sql.DB
 }
 
 func NewRepository(opts NewRepositoryOptions) *Repository {
-	db, err := sql.Open("postgres", opts.Dsn)
-	if err != nil {
-		panic(err)
-	}
 	return &Repository{
-		Db: db,
+		Db: opts.Db,
 	}
 }
